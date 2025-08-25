@@ -17,18 +17,41 @@ async function main() {
     tui.updateStatus('Connecting to Notion...');
     tui.render();
 
-    const loadTasks = async () => {
+    const loadTasks = async (forceRefresh = false) => {
       try {
-        tui.updateStatus('Fetching tasks from Notion...');
-        const tasksByStatus = await notionClient.getTasksByStatus();
-        tui.updateTasks(tasksByStatus);
+        if (forceRefresh) {
+          tui.updateStatus('Refreshing tasks from Notion...');
+        } else {
+          tui.updateStatus('Loading tasks...');
+        }
+        const tasksByStatus = await notionClient.getTasksByStatus(forceRefresh);
+        
+        // Check if data came from cache and show cache age
+        if (tasksByStatus._fromCache) {
+          const cacheAge = tasksByStatus._cacheAge || 'recently';
+          // Remove metadata before passing to TUI
+          delete tasksByStatus._fromCache;
+          delete tasksByStatus._cacheAge;
+          tui.updateTasks(tasksByStatus);
+          
+          const totalTasks = Object.values(tasksByStatus).reduce((sum, tasks) => sum + tasks.length, 0);
+          const statusNames = Object.keys(tasksByStatus);
+          tui.updateStatus(`${totalTasks} tasks, ${statusNames.length} statuses (cached ${cacheAge})`);
+        } else {
+          tui.updateTasks(tasksByStatus);
+          
+          const totalTasks = Object.values(tasksByStatus).reduce((sum, tasks) => sum + tasks.length, 0);
+          const statusNames = Object.keys(tasksByStatus);
+          tui.updateStatus(`${totalTasks} tasks, ${statusNames.length} statuses (fresh data)`);
+        }
       } catch (error) {
         tui.showError(error);
         tui.updateStatus(`Error: ${error.message}`);
       }
     };
 
-    tui.onRefresh = loadTasks;
+    // Set refresh handler to force refresh (clear cache)
+    tui.onRefresh = () => loadTasks(true);
 
     await loadTasks();
 
